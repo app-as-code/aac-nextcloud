@@ -1,0 +1,152 @@
+services:
+  # --- Main Application Service ---
+  aac-nextcloud:
+    image: "nextcloud:34"
+    container_name: "aac-nextcloud"
+    hostname: "cloud"
+    restart: "always"
+
+
+    environment:
+      NEXTCLOUD_ADMIN_USER: "admin"
+      NEXTCLOUD_ADMIN_PASSWORD: "${NEXTCLOUD_ADMIN_PASSWORD:?set NEXTCLOUD_ADMIN_PASSWORD in .env (see .env.example)}"
+      MYSQL_HOST: "cloud.example.com"
+      MYSQL_DATABASE: "nextcloud"
+      MYSQL_USER: "nextcloud"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env (see .env.example)}"
+      REDIS_HOST: "cloud.example.com"
+      REDIS_HOST_PORT: "6379"
+      SERVICE_IMAGE_TAG: "34"
+      OVERWRITECLIURL: "https://cloud.example.com"
+      OVERWRITEPROTOCOL: "https"
+      OVERWRITEHOST: "cloud.example.com"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:?set TRUSTED_PROXIES in .env (see .env.example)}"
+      NEXTCLOUD_TRUSTED_DOMAINS: "cloud.example.com"
+      NEXTCLOUD_DATA_DIR: "/mnt/data"
+      TZ: "Europe/Berlin"
+      NEXTCLOUD_INIT_HTACCESS: "false"
+      NEXTCLOUD_INIT_LOCK: "false"
+      APACHE_DISABLE_REWRITE_IP: "1"
+      NEXTCLOUD_UPDATE: "0"
+      PHP_MEMORY_LIMIT: "1G"
+      PHP_UPLOAD_LIMIT: "100G"
+      NEXTCLOUD_UPLOAD_MAX_FILESIZE: "100G"
+      NEXTCLOUD_MAX_FILE_UPLOADS: "20000"
+      MARIADB_DATABASE: "nextcloud"
+      MARIADB_USER: "nextcloud"
+      MARIADB_PASSWORD: "${MARIADB_PASSWORD:?set MARIADB_PASSWORD in .env (see .env.example)}"
+      MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD:?set MARIADB_ROOT_PASSWORD in .env (see .env.example)}"
+      HOMEPAGE_WIDGET_USERNAME: "admin"
+      HOMEPAGE_WIDGET_PASSWORD: "${HOMEPAGE_WIDGET_PASSWORD:?set HOMEPAGE_WIDGET_PASSWORD in .env (see .env.example)}"
+      MARIADB_ALLOW_EMPTY_PASSWORD: "${MARIADB_ALLOW_EMPTY_PASSWORD:?set MARIADB_ALLOW_EMPTY_PASSWORD in .env (see .env.example)}"
+      MARIADB_RANDOM_ROOT_PASSWORD: "${MARIADB_RANDOM_ROOT_PASSWORD:?set MARIADB_RANDOM_ROOT_PASSWORD in .env (see .env.example)}"
+    ports:
+      - "29765:80/tcp"
+      - "29763:443/tcp"
+
+    volumes:
+      - "/export/docker/aac-nextcloud/html:/var/www/html"
+      - "/mnt/nextcloud:/mnt/data"
+
+    networks:
+      - exposed
+      - interconnect
+      - secured
+      - stack_internal
+
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.aac-nextcloud.rule: "Host(`cloud.example.com`) || Host(`cloud.example.com`)"
+      traefik.http.routers.aac-nextcloud.entrypoints: "websecure"
+      traefik.http.routers.aac-nextcloud.tls: "true"
+      traefik.http.routers.aac-nextcloud.tls.certresolver: "ionos"
+      traefik.docker.network: "services-secured"
+      traefik.http.services.aac-nextcloud.loadbalancer.server.port: "80"
+      traefik.http.services.aac-nextcloud.loadbalancer.server.scheme: "http"
+      auto-dns.createWildcard.aac-nextcloud: "false"
+      auto-dns.customDNS.aac-nextcloud: "true"
+      auto-dns.customDOMAIN.aac-nextcloud: "example.com"
+      auto-dns.customHost.aac-nextcloud: "cloud"
+      homepage.group: "Finanzen - Dokumente - Organisation"
+      homepage.name: "Cloud"
+      homepage.href: "https://cloud.example.com"
+      homepage.icon: "nextcloud.png"
+      homepage.description: "Selfhosted Cloud Plattform"
+
+
+    depends_on:
+      aac-nextcloud-db:
+        condition: service_healthy
+      aac-nextcloud-redis:
+        condition: service_healthy
+
+
+  # --- Service Dependencies (Sidecars) ---
+  aac-nextcloud-db:
+    image: "mariadb:12.3.1-ubi10-rc"
+    container_name: "aac-nextcloud-db"
+    restart: "always"
+    
+
+    env_file:
+      - .env
+    environment:
+      TZ: "Europe/Berlin"
+
+
+    volumes:
+      - "/export/docker/aac-nextcloud/db:/var/lib/mysql"
+
+    networks:
+      - stack_internal
+
+
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost --silent || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+
+  aac-nextcloud-redis:
+    image: "redis:8.6.1"
+    container_name: "aac-nextcloud-redis"
+    restart: "always"
+    
+
+    env_file:
+      - .env
+    environment:
+      TZ: "Europe/Berlin"
+
+
+    volumes:
+      - "/export/docker/aac-nextcloud/redis-data:/data"
+
+    networks:
+      - stack_internal
+
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+
+
+networks:
+  secured:
+    name: "services-secured"
+    external: true
+  exposed:
+    name: "services-exposed"
+    external: true
+  interconnect:
+    name: "docker-default"
+    external: true
+  stack_internal:
+    name: "aac-nextcloud_stack_internal"
+    driver: "bridge"
+
